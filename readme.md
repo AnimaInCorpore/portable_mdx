@@ -32,6 +32,11 @@ GORRY 氏の MXDRVg V2.00b と、m_puusan 氏の X68Sound.dll（src 020615）の
 * OPM レジスタ値取得 API、キーオン取得 API が拡張されている
 * mdx ファイルのパースを簡単に行えるユーティリティ関数が拡張されている
 
+# 作者 / クレジット
+* 64bit 環境向け移植: Yosshin
+* AI-assisted JavaScript/Web プレイヤー移植: AnimaInCorpore
+* GitHub repository: https://github.com/AnimaInCorpore/portable_mdx
+
 # 使い方
 ドキュメントは用意されていません。サンプルコードをご参照ください。
 
