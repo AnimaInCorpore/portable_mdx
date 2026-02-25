@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portable MDX Web Player</title>
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="hero">
+      <p class="kicker">MXDRV + X68Sound</p>
+      <h1>Portable MDX Web Player</h1>
+      <p class="subtitle">JavaScript conversion of the native C playback pipeline with AudioWorklet rendering.</p>
+    </header>
+
+    <section class="panel controls-panel">
+      <h2>Track Input</h2>
+      <div class="controls-grid">
+        <label class="field">
+          <span>MDX File</span>
+          <input id="mdxFileInput" type="file" accept=".mdx,.MDX">
+        </label>
+        <label class="field">
+          <span>PDX File (Optional)</span>
+          <input id="pdxFileInput" type="file" accept=".pdx,.PDX">
+        </label>
+      </div>
+      <div id="dropZone" class="drop-zone" tabindex="0">
+        Drop MDX/PDX files here
+      </div>
+      <div class="buttons">
+        <button id="loadPlayBtn" class="btn btn-primary">Load & Play</button>
+        <button id="pauseBtn" class="btn">Pause</button>
+        <button id="resumeBtn" class="btn">Resume</button>
+        <button id="fadeBtn" class="btn">Fadeout</button>
+        <button id="stopBtn" class="btn">Stop</button>
+      </div>
+    </section>
+
+    <section class="panel status-panel">
+      <h2>Playback Status</h2>
+      <div class="status-grid">
+        <div><span class="label">Title</span><span id="titleValue">-</span></div>
+        <div><span class="label">Elapsed</span><span id="elapsedValue">0.0s</span></div>
+        <div><span class="label">Loops</span><span id="loopsValue">0</span></div>
+        <div><span class="label">Duration</span><span id="durationValue">-</span></div>
+      </div>
+      <p id="statusText" class="status-text">Waiting for input.</p>
+    </section>
+
+    <section class="panel meter-panel">
+      <h2>Channel Meter</h2>
+      <canvas id="meterCanvas" width="1024" height="512"></canvas>
+    </section>
+  </main>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

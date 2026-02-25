@@ -1,0 +1,196 @@
+:root {
+  --bg-top: #0f2027;
+  --bg-mid: #203a43;
+  --bg-bottom: #2c5364;
+  --panel-bg: rgba(6, 16, 26, 0.74);
+  --panel-border: rgba(130, 195, 226, 0.28);
+  --text-main: #e6f6ff;
+  --text-soft: #9cc7d8;
+  --accent: #f1b24a;
+  --accent-2: #4fd0cb;
+  --danger: #ef7f6d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+  color: var(--text-main);
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(79, 208, 203, 0.22), transparent 70%),
+    radial-gradient(900px 500px at -10% 10%, rgba(241, 178, 74, 0.16), transparent 65%),
+    linear-gradient(160deg, var(--bg-top), var(--bg-mid) 45%, var(--bg-bottom));
+}
+
+.layout {
+  width: min(1024px, 94vw);
+  margin: 24px auto 40px;
+  display: grid;
+  gap: 14px;
+}
+
+.hero {
+  padding: 10px 4px;
+  animation: reveal 420ms ease-out both;
+}
+
+.kicker {
+  margin: 0 0 6px;
+  color: var(--accent);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.76rem;
+}
+
+h1, h2 {
+  margin: 0 0 8px;
+}
+
+h1 {
+  font-size: clamp(1.56rem, 3.2vw, 2.25rem);
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-size: 1.02rem;
+  color: var(--accent-2);
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-soft);
+  max-width: 72ch;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 14px;
+  backdrop-filter: blur(2px);
+  animation: reveal 500ms ease-out both;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.field span {
+  color: var(--text-soft);
+}
+
+input[type="file"] {
+  width: 100%;
+  color: var(--text-main);
+  border: 1px solid rgba(133, 190, 213, 0.35);
+  border-radius: 8px;
+  background: rgba(3, 11, 18, 0.65);
+  padding: 8px;
+}
+
+.drop-zone {
+  margin-top: 10px;
+  border: 1px dashed rgba(79, 208, 203, 0.6);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text-soft);
+  text-align: center;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.drop-zone.is-active {
+  border-color: var(--accent);
+  background: rgba(241, 178, 74, 0.1);
+}
+
+.buttons {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn {
+  border: 1px solid rgba(130, 195, 226, 0.45);
+  background: rgba(7, 19, 30, 0.85);
+  color: var(--text-main);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--accent-2);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn-primary {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(241, 178, 74, 0.35), rgba(170, 106, 25, 0.35));
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.status-grid .label {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.status-text {
+  margin: 12px 0 0;
+  color: var(--text-soft);
+}
+
+#meterCanvas {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(130, 195, 226, 0.24);
+  background: rgba(3, 11, 18, 0.65);
+  display: block;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 780px) {
+  .layout {
+    margin-top: 14px;
+  }
+
+  .controls-grid,
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+}
