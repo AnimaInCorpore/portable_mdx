@@ -1,5 +1,7 @@
 # Portable mdx decoder
 
+	Converted to JavaScript/Web by AnimaInCorpore.
+
 	X68k MXDRV music driver version 2.06+17 Rel.X5-S
 		(c)1988-92 milk.,K.MAEKAWA, Missy.M, Yatsube
 
