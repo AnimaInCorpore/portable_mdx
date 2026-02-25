@@ -8,9 +8,10 @@ import {
 
 const ui = {
   filePicker: document.getElementById('filePicker'),
-  loadPlayBtn: document.getElementById('loadPlayBtn'),
-  pauseBtn: document.getElementById('pauseBtn'),
-  resumeBtn: document.getElementById('resumeBtn'),
+  playPauseBtn: document.getElementById('playPauseBtn'),
+  playIcon: document.getElementById('playIcon'),
+  pauseIcon: document.getElementById('pauseIcon'),
+  playPauseText: document.getElementById('playPauseText'),
   fadeBtn: document.getElementById('fadeBtn'),
   stopBtn: document.getElementById('stopBtn'),
   dropZone: document.getElementById('dropZone'),
@@ -141,6 +142,22 @@ function resetVizState() {
   vizState.keyOffLevels.fill(0);
 }
 
+function updatePlayPauseButton() {
+  if (!playbackState.running) {
+    ui.playIcon.style.display = 'block';
+    ui.pauseIcon.style.display = 'none';
+    ui.playPauseText.textContent = 'Play';
+  } else if (playbackState.paused) {
+    ui.playIcon.style.display = 'block';
+    ui.pauseIcon.style.display = 'none';
+    ui.playPauseText.textContent = 'Resume';
+  } else {
+    ui.playIcon.style.display = 'none';
+    ui.pauseIcon.style.display = 'block';
+    ui.playPauseText.textContent = 'Pause';
+  }
+}
+
 function onWorkletMessage(event) {
   const msg = event.data || {};
   switch (msg.type) {
@@ -152,25 +169,30 @@ function onWorkletMessage(event) {
     case 'trackLoaded':
       playbackState.running = true;
       playbackState.paused = false;
+      updatePlayPauseButton();
       ui.durationValue.textContent = formatSecondsFromMs(msg.durationMs >>> 0);
       setStatus('Playback started.');
       return;
     case 'paused':
       playbackState.paused = true;
+      updatePlayPauseButton();
       setStatus('Paused.');
       return;
     case 'resumed':
       playbackState.paused = false;
+      updatePlayPauseButton();
       setStatus('Resumed.');
       return;
     case 'stopped':
       playbackState.running = false;
       playbackState.paused = false;
+      updatePlayPauseButton();
       setStatus('Stopped.');
       return;
     case 'ended':
       playbackState.running = false;
       playbackState.paused = false;
+      updatePlayPauseButton();
       ui.elapsedValue.textContent = formatSecondsFromMs(msg.playTimeMs >>> 0);
       ui.loopsValue.textContent = String(msg.loops >>> 0);
       setStatus('Track finished.');
@@ -430,24 +452,46 @@ function renderVisualizer() {
   const height = canvas.height;
   ctx.imageSmoothingEnabled = false;
 
-  const OPM_COLUMN_W = 64;
-  const OPM_ROW_H = 8;
-  const OPM_BIT_W = 7;
-  const KEY_DISPLAY_X = 32;
-  const KEY_DISPLAY_Y = 256;
-  const KEY_W = 5;
-  const KEY_H = 16;
+  // Base dimensions from original 1024x512 layout
+  const BASE_W = 1024;
+  const BASE_H = 512;
+  
+  // Calculate scale factors
+  const scaleX = width / BASE_W;
+  const scaleY = height / BASE_H;
+
+  const OPM_COLUMN_W = 64 * scaleX;
+  const OPM_ROW_H = 8 * scaleY;
+  const OPM_BIT_W = 7 * scaleX;
+  const KEY_DISPLAY_X = 32 * scaleX;
+  const KEY_DISPLAY_Y = 256 * scaleY;
+  const KEY_W = 5 * scaleX;
+  const KEY_H = 16 * scaleY;
   const LEVEL_METER_X = 0;
-  const LEVEL_METER_Y = 256;
-  const LEVEL_METER_W = 32;
-  const LEVEL_METER_H = 16;
+  const LEVEL_METER_Y = 256 * scaleY;
+  const LEVEL_METER_W = 32 * scaleX;
+  const LEVEL_METER_H = 16 * scaleY;
 
   const draw = () => {
     const bg = ctx.createLinearGradient(0, 0, 0, height);
-    bg.addColorStop(0, 'rgba(14, 29, 40, 0.98)');
-    bg.addColorStop(1, 'rgba(5, 11, 20, 0.98)');
+    bg.addColorStop(0, 'rgba(5, 10, 15, 0.98)');
+    bg.addColorStop(1, 'rgba(15, 25, 35, 0.98)');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
+
+    // Draw grid lines for OPM registers
+    ctx.strokeStyle = 'rgba(79, 208, 203, 0.05)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      ctx.moveTo(0, i * OPM_ROW_H);
+      ctx.lineTo(width, i * OPM_ROW_H);
+    }
+    for (let i = 0; i <= 16; i++) {
+      ctx.moveTo(i * OPM_COLUMN_W, 0);
+      ctx.lineTo(i * OPM_COLUMN_W, 256 * scaleY);
+    }
+    ctx.stroke();
 
     for (let reg = 0; reg < 256; reg += 1) {
       const regVal = vizState.opmRegs[reg];
@@ -456,15 +500,29 @@ function renderVisualizer() {
         const x = ((reg & 7) * OPM_COLUMN_W) + (bit * OPM_BIT_W);
         const y = ((reg / 8) | 0) * OPM_ROW_H;
         const bitOn = (regVal & (1 << bit)) !== 0 ? 1 : 0;
-        const r = (bitOn * 0x60 + (0x80 / Math.exp(attn / 64)) + 0x1f) | 0;
-        const g = (bitOn * 0x80 + (0x60 / Math.exp(attn / 16)) + 0x1f) | 0;
-        const b = (bitOn * 0x60 + (0x80 / Math.exp(attn / 256)) + 0x1f) | 0;
-        fillRectSafe(ctx, x, y, OPM_BIT_W - 1, OPM_ROW_H - 1, `rgb(${r}, ${g}, ${b})`, width, height);
+        
+        // Modern color palette for OPM bits
+        const r = (bitOn * 79 + (100 / Math.exp(attn / 64)) + 10) | 0;
+        const g = (bitOn * 208 + (150 / Math.exp(attn / 16)) + 20) | 0;
+        const b = (bitOn * 203 + (150 / Math.exp(attn / 256)) + 30) | 0;
+        
+        if (bitOn || attn < 512) {
+          fillRectSafe(ctx, x + 1, y + 1, OPM_BIT_W - (2 * scaleX), OPM_ROW_H - (2 * scaleY), `rgb(${r}, ${g}, ${b})`, width, height);
+        } else {
+          fillRectSafe(ctx, x + 1, y + 1, OPM_BIT_W - (2 * scaleX), OPM_ROW_H - (2 * scaleY), 'rgba(255, 255, 255, 0.03)', width, height);
+        }
       }
       if (vizState.opmElapsed[reg] < 0xffff) {
         vizState.opmElapsed[reg] += 1;
       }
     }
+
+    // Draw separator line
+    ctx.strokeStyle = 'rgba(79, 208, 203, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(0, KEY_DISPLAY_Y);
+    ctx.lineTo(width, KEY_DISPLAY_Y);
+    ctx.stroke();
 
     for (let i = 0; i < 16; i += 1) {
       const note = vizState.notes[i] & 0xffff;
@@ -477,11 +535,13 @@ function renderVisualizer() {
         const yBase = i * KEY_H + KEY_DISPLAY_Y;
 
         if (i < 8) {
+          // FM Channels (Cyan/Blue)
           const xPitch = xBase + ((pitchOffset * KEY_W) / 64);
-          fillRectSafe(ctx, xPitch, yBase, KEY_W, KEY_H - 1, 'rgb(0, 128, 0)', width, height);
-          fillRectSafe(ctx, xBase, yBase, KEY_W, KEY_H - 1, `rgb(${level}, ${level}, 255)`, width, height);
+          fillRectSafe(ctx, xPitch, yBase + 2, KEY_W, KEY_H - (4 * scaleY), 'rgba(79, 208, 203, 0.5)', width, height);
+          fillRectSafe(ctx, xBase, yBase + 2, KEY_W, KEY_H - (4 * scaleY), `rgb(${level/2}, ${level}, 255)`, width, height);
         } else {
-          fillRectSafe(ctx, xBase, yBase, KEY_W, KEY_H - 1, `rgb(255, ${level}, ${level})`, width, height);
+          // ADPCM Channels (Orange/Red)
+          fillRectSafe(ctx, xBase, yBase + 2, KEY_W, KEY_H - (4 * scaleY), `rgb(255, ${level/1.5}, ${level/3})`, width, height);
         }
       }
 
@@ -492,8 +552,19 @@ function renderVisualizer() {
       const offWidth = (vizState.keyOffLevels[i] * LEVEL_METER_W) / 255;
       const onWidth = (vizState.keyOnLevels[i] * LEVEL_METER_W) / 255;
       const y = i * LEVEL_METER_H + LEVEL_METER_Y;
-      fillRectSafe(ctx, LEVEL_METER_X, y, offWidth, LEVEL_METER_H - 1, 'rgb(64, 64, 64)', width, height);
-      fillRectSafe(ctx, LEVEL_METER_X, y, onWidth, LEVEL_METER_H - 1, 'rgb(255, 255, 255)', width, height);
+      
+      // Channel labels
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.font = `${10 * scaleY}px monospace`;
+      ctx.fillText(i < 8 ? `FM${i+1}` : `PCM${i-7}`, 2 * scaleX, y + (12 * scaleY));
+
+      // Level meters
+      const meterX = LEVEL_METER_X + (30 * scaleX);
+      fillRectSafe(ctx, meterX, y + 2, offWidth, LEVEL_METER_H - (4 * scaleY), 'rgba(255, 255, 255, 0.1)', width, height);
+      
+      const meterColor = i < 8 ? 'rgb(79, 208, 203)' : 'rgb(241, 178, 74)';
+      fillRectSafe(ctx, meterX, y + 2, onWidth, LEVEL_METER_H - (4 * scaleY), meterColor, width, height);
+      
       vizState.keyOnLevels[i] = (vizState.keyOnLevels[i] * 31) / 32;
     }
 
@@ -513,27 +584,15 @@ function bindEvents() {
     }
   });
 
-  ui.loadPlayBtn.addEventListener('click', async () => {
+  ui.playPauseBtn.addEventListener('click', async () => {
     try {
-      await loadAndPlay();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(message, true);
-    }
-  });
-
-  ui.pauseBtn.addEventListener('click', async () => {
-    try {
-      await sendTransportCommand('pause');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setStatus(message, true);
-    }
-  });
-
-  ui.resumeBtn.addEventListener('click', async () => {
-    try {
-      await sendTransportCommand('resume');
+      if (!playbackState.running) {
+        await loadAndPlay();
+      } else if (playbackState.paused) {
+        await sendTransportCommand('resume');
+      } else {
+        await sendTransportCommand('pause');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message, true);
@@ -578,10 +637,14 @@ function bindEvents() {
     try {
       if (event.code === 'Space') {
         event.preventDefault();
-        if (playbackState.running) {
-          await sendTransportCommand(playbackState.paused ? 'resume' : 'pause');
-        } else if (selectedMdxFile) {
-          await loadAndPlay();
+        if (!playbackState.running) {
+          if (selectedMdxFile) {
+            await loadAndPlay();
+          }
+        } else if (playbackState.paused) {
+          await sendTransportCommand('resume');
+        } else {
+          await sendTransportCommand('pause');
         }
         return;
       }

@@ -7,44 +7,68 @@
   <link rel="stylesheet" href="./css/app.css">
 </head>
 <body>
-  <main class="layout">
-    <header class="hero">
-      <p class="kicker">MXDRV + X68Sound</p>
-      <h1>Portable MDX Web Player</h1>
-      <p class="subtitle">JavaScript conversion of the native C playback pipeline with AudioWorklet rendering.</p>
-      <p class="credits">Original 64-bit portable port by Yosshin. AI-assisted JavaScript/Web port by AnimaInCorpore. <a href="https://github.com/AnimaInCorpore/portable_mdx" target="_blank" rel="noopener noreferrer">GitHub repository</a></p>
-    </header>
+  <main class="player-wrapper">
+    <div class="player-card">
+      <header class="player-header">
+        <div class="header-info">
+          <div class="kicker">MXDRV + X68Sound</div>
+          <h1>Portable MDX Player</h1>
+        </div>
+        <a class="github-link" href="https://github.com/AnimaInCorpore/portable_mdx" target="_blank" rel="noopener noreferrer" title="GitHub Repository">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+        </a>
+      </header>
 
-    <section class="panel controls-panel">
-      <h2>Track Input</h2>
-      <div id="dropZone" class="drop-zone" tabindex="0">
-        Drop MDX/PDX files here, or click to choose multiple files
+      <div class="player-screen">
+        <div class="screen-top">
+          <div class="track-info">
+            <div class="label">NOW PLAYING</div>
+            <div id="titleValue" class="track-title">-</div>
+            <div id="statusText" class="track-status">Waiting for input.</div>
+          </div>
+          <div class="time-info">
+            <div class="time-display">
+              <span id="elapsedValue">0.0s</span>
+              <span class="time-separator">/</span>
+              <span id="durationValue">-</span>
+            </div>
+            <div class="loop-display">
+              <span class="label">LOOP</span>
+              <span id="loopsValue" class="loop-count">0</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="meter-container">
+          <canvas id="meterCanvas" width="1024" height="512"></canvas>
+        </div>
       </div>
-      <input id="filePicker" class="file-picker" type="file" accept=".mdx,.MDX,.pdx,.PDX" multiple>
-      <div class="buttons">
-        <button id="loadPlayBtn" class="btn btn-primary">Load & Play</button>
-        <button id="pauseBtn" class="btn">Pause</button>
-        <button id="resumeBtn" class="btn">Resume</button>
-        <button id="fadeBtn" class="btn">Fadeout</button>
-        <button id="stopBtn" class="btn">Stop</button>
-      </div>
-    </section>
 
-    <section class="panel status-panel">
-      <h2>Playback Status</h2>
-      <div class="status-grid">
-        <div><span class="label">Title</span><span id="titleValue">-</span></div>
-        <div><span class="label">Elapsed</span><span id="elapsedValue">0.0s</span></div>
-        <div><span class="label">Loops</span><span id="loopsValue">0</span></div>
-        <div><span class="label">Duration</span><span id="durationValue">-</span></div>
+      <div class="player-controls">
+        <div id="dropZone" class="drop-zone" tabindex="0">
+          <svg class="drop-icon" viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <span>Drop MDX/PDX files or click to browse</span>
+        </div>
+        <input id="filePicker" class="file-picker" type="file" accept=".mdx,.MDX,.pdx,.PDX" multiple>
+        
+        <div class="buttons">
+          <button id="playPauseBtn" class="btn btn-primary" title="Play">
+            <svg id="playIcon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <svg id="pauseIcon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            <span id="playPauseText">Play</span>
+          </button>
+          <button id="fadeBtn" class="btn" title="Fadeout">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+          </button>
+          <button id="stopBtn" class="btn" title="Stop">
+            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+          </button>
+        </div>
       </div>
-      <p id="statusText" class="status-text">Waiting for input.</p>
-    </section>
-
-    <section class="panel meter-panel">
-      <h2>Channel Meter</h2>
-      <canvas id="meterCanvas" width="1024" height="512"></canvas>
-    </section>
+    </div>
+    <div class="credits">
+      Original 64-bit portable port by Yosshin. AI-assisted Web port by AnimaInCorpore.
+    </div>
   </main>
   <script type="module" src="./js/app.js"></script>
 </body>
