@@ -16,19 +16,10 @@
 
     <section class="panel controls-panel">
       <h2>Track Input</h2>
-      <div class="controls-grid">
-        <label class="field">
-          <span>MDX File</span>
-          <input id="mdxFileInput" type="file" accept=".mdx,.MDX">
-        </label>
-        <label class="field">
-          <span>PDX File (Optional)</span>
-          <input id="pdxFileInput" type="file" accept=".pdx,.PDX">
-        </label>
-      </div>
       <div id="dropZone" class="drop-zone" tabindex="0">
-        Drop MDX/PDX files here
+        Drop MDX/PDX files here, or click to choose multiple files
       </div>
+      <input id="filePicker" class="file-picker" type="file" accept=".mdx,.MDX,.pdx,.PDX" multiple>
       <div class="buttons">
         <button id="loadPlayBtn" class="btn btn-primary">Load & Play</button>
         <button id="pauseBtn" class="btn">Pause</button>

@@ -75,44 +75,36 @@ h2 {
   animation: reveal 500ms ease-out both;
 }
 
-.controls-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.field {
-  display: grid;
-  gap: 6px;
-  font-size: 0.9rem;
-}
-
-.field span {
-  color: var(--text-soft);
-}
-
-input[type="file"] {
-  width: 100%;
-  color: var(--text-main);
-  border: 1px solid rgba(133, 190, 213, 0.35);
-  border-radius: 8px;
-  background: rgba(3, 11, 18, 0.65);
-  padding: 8px;
-}
-
 .drop-zone {
-  margin-top: 10px;
+  margin-top: 6px;
   border: 1px dashed rgba(79, 208, 203, 0.6);
   border-radius: 8px;
   padding: 12px;
   color: var(--text-soft);
   text-align: center;
+  cursor: pointer;
   transition: border-color 140ms ease, background-color 140ms ease;
 }
 
 .drop-zone.is-active {
   border-color: var(--accent);
   background: rgba(241, 178, 74, 0.1);
+}
+
+.drop-zone:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.file-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 
 .buttons {
@@ -189,7 +181,6 @@ input[type="file"] {
     margin-top: 14px;
   }
 
-  .controls-grid,
   .status-grid {
     grid-template-columns: 1fr;
   }

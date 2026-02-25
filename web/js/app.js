@@ -7,8 +7,7 @@ import {
 } from './mdx_util.js';
 
 const ui = {
-  mdxFileInput: document.getElementById('mdxFileInput'),
-  pdxFileInput: document.getElementById('pdxFileInput'),
+  filePicker: document.getElementById('filePicker'),
   loadPlayBtn: document.getElementById('loadPlayBtn'),
   pauseBtn: document.getElementById('pauseBtn'),
   resumeBtn: document.getElementById('resumeBtn'),
@@ -371,26 +370,47 @@ function onDropZoneLeave(event) {
   ui.dropZone.classList.remove('is-active');
 }
 
-function onDropZoneDrop(event) {
-  event.preventDefault();
-  ui.dropZone.classList.remove('is-active');
-
-  const files = Array.from(event.dataTransfer?.files || []);
+async function handleIncomingFiles(fileList) {
+  const files = Array.from(fileList || []);
   if (files.length === 0) return;
   rememberFiles(files);
 
-  for (const file of files) {
-    const upper = file.name.toUpperCase();
-    if (!selectedMdxFile && upper.endsWith('.MDX')) {
-      setSelectedMdx(file);
-      continue;
-    }
-    if (!selectedPdxFile && upper.endsWith('.PDX')) {
-      setSelectedPdx(file);
+  const droppedMdx = files.find((file) => file.name.toUpperCase().endsWith('.MDX')) || null;
+  const droppedPdx = files.find((file) => file.name.toUpperCase().endsWith('.PDX')) || null;
+
+  if (droppedMdx) {
+    setSelectedMdx(droppedMdx);
+    // Avoid stale manual PDX from a previous track; autodiscovery still works via discoveredFiles.
+    if (!droppedPdx) {
+      setSelectedPdx(null);
     }
   }
+  if (droppedPdx) {
+    setSelectedPdx(droppedPdx);
+  }
 
-  setStatus(`Discovered ${files.length} dropped file(s).`);
+  if (!droppedMdx && !droppedPdx) {
+    setStatus(`Discovered ${files.length} dropped file(s), but none were MDX/PDX.`, true);
+    return;
+  }
+
+  if (!droppedMdx) {
+    setStatus(`Discovered ${files.length} dropped file(s).`);
+    return;
+  }
+
+  setStatus(`Selected ${droppedMdx.name}. Click "Load & Play" to start playback.`);
+}
+
+async function onDropZoneDrop(event) {
+  event.preventDefault();
+  ui.dropZone.classList.remove('is-active');
+  await handleIncomingFiles(event.dataTransfer?.files || []);
+}
+
+function openFilePicker() {
+  ui.filePicker.value = '';
+  ui.filePicker.click();
 }
 
 function fillRectSafe(ctx, x, y, w, h, color, boundsW, boundsH) {
@@ -484,16 +504,13 @@ function renderVisualizer() {
 }
 
 function bindEvents() {
-  ui.mdxFileInput.addEventListener('change', () => {
-    const file = ui.mdxFileInput.files?.[0] || null;
-    if (file) rememberFiles([file]);
-    setSelectedMdx(file);
-  });
-
-  ui.pdxFileInput.addEventListener('change', () => {
-    const file = ui.pdxFileInput.files?.[0] || null;
-    if (file) rememberFiles([file]);
-    setSelectedPdx(file);
+  ui.filePicker.addEventListener('change', async () => {
+    try {
+      await handleIncomingFiles(ui.filePicker.files || []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message, true);
+    }
   });
 
   ui.loadPlayBtn.addEventListener('click', async () => {
@@ -546,6 +563,15 @@ function bindEvents() {
   ui.dropZone.addEventListener('dragover', onDropZoneEnter);
   ui.dropZone.addEventListener('dragleave', onDropZoneLeave);
   ui.dropZone.addEventListener('drop', onDropZoneDrop);
+  ui.dropZone.addEventListener('click', () => {
+    openFilePicker();
+  });
+  ui.dropZone.addEventListener('keydown', (event) => {
+    if (event.code === 'Enter' || event.code === 'Space') {
+      event.preventDefault();
+      openFilePicker();
+    }
+  });
 
   window.addEventListener('keydown', async (event) => {
     if (event.target instanceof HTMLInputElement) return;
