@@ -21,6 +21,8 @@ const ui = {
   durationValue: document.getElementById('durationValue'),
   statusText: document.getElementById('statusText'),
   meterCanvas: document.getElementById('meterCanvas'),
+  songList: document.getElementById('songList'),
+  songCountValue: document.getElementById('songCountValue'),
 };
 
 let audioContext = null;
@@ -36,9 +38,16 @@ const playbackState = {
   paused: false,
 };
 
-let selectedMdxFile = null;
-let selectedPdxFile = null;
-const discoveredFiles = new Map();
+const trackLibrary = {
+  tracks: [],
+  selectedTrackId: null,
+  collections: new Map(),
+  globalByPath: new Map(),
+  globalByBase: new Map(),
+};
+
+const utf8Decoder = new TextDecoder('utf-8');
+let zipImportSequence = 0;
 
 const vizState = {
   opmRegs: new Uint8Array(256),
@@ -106,24 +115,308 @@ function buildPdxNameCandidates(pdxFileName) {
   return result;
 }
 
-function setSelectedMdx(file) {
-  selectedMdxFile = file || null;
-  if (selectedMdxFile) {
-    setStatus(`Selected MDX: ${selectedMdxFile.name}`);
+function normalizePath(path) {
+  return String(path || '')
+    .replace(/\\/g, '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\.\//, '')
+    .trim();
+}
+
+function getPathBaseName(path) {
+  const normalized = normalizePath(path);
+  const pos = normalized.lastIndexOf('/');
+  return pos >= 0 ? normalized.slice(pos + 1) : normalized;
+}
+
+function getPathDirName(path) {
+  const normalized = normalizePath(path);
+  const pos = normalized.lastIndexOf('/');
+  return pos >= 0 ? normalized.slice(0, pos) : '';
+}
+
+function isMdxPath(path) {
+  return normalizePath(path).toUpperCase().endsWith('.MDX');
+}
+
+function isPdxPath(path) {
+  return normalizePath(path).toUpperCase().endsWith('.PDX');
+}
+
+function isZipPath(path) {
+  return normalizePath(path).toUpperCase().endsWith('.ZIP');
+}
+
+function formatTrackLabel(track) {
+  return track.sourceName
+    ? `${track.relativePath} [${track.sourceName}]`
+    : track.relativePath;
+}
+
+function getOrCreateCollection(collectionId) {
+  let collection = trackLibrary.collections.get(collectionId);
+  if (!collection) {
+    collection = {
+      byPath: new Map(),
+      byBase: new Map(),
+    };
+    trackLibrary.collections.set(collectionId, collection);
+  }
+  return collection;
+}
+
+function addResourceIndexEntry(resource, byPath, byBase) {
+  if (!byPath.has(resource.pathKey)) {
+    byPath.set(resource.pathKey, resource);
+  }
+  let list = byBase.get(resource.baseKey);
+  if (!list) {
+    list = [];
+    byBase.set(resource.baseKey, list);
+  }
+  if (!list.some((entry) => entry.id === resource.id)) {
+    list.push(resource);
   }
 }
 
-function setSelectedPdx(file) {
-  selectedPdxFile = file || null;
-  if (selectedPdxFile) {
-    setStatus(`Selected PDX: ${selectedPdxFile.name}`);
+function registerResource(resource) {
+  const collection = getOrCreateCollection(resource.collectionId);
+  addResourceIndexEntry(resource, collection.byPath, collection.byBase);
+  addResourceIndexEntry(resource, trackLibrary.globalByPath, trackLibrary.globalByBase);
+
+  if (!isMdxPath(resource.relativePath)) {
+    return null;
+  }
+  if (trackLibrary.tracks.some((track) => track.id === resource.id)) {
+    return null;
+  }
+  trackLibrary.tracks.push(resource);
+  return resource;
+}
+
+function getSelectedTrack() {
+  if (!trackLibrary.selectedTrackId) return null;
+  return trackLibrary.tracks.find((track) => track.id === trackLibrary.selectedTrackId) || null;
+}
+
+function renderSongList() {
+  if (!ui.songList) return;
+  const selectedTrackId = trackLibrary.selectedTrackId;
+  ui.songList.textContent = '';
+  for (const track of trackLibrary.tracks) {
+    const option = document.createElement('option');
+    option.value = track.id;
+    option.textContent = formatTrackLabel(track);
+    option.selected = track.id === selectedTrackId;
+    ui.songList.appendChild(option);
+  }
+  ui.songList.disabled = trackLibrary.tracks.length === 0;
+  if (ui.songCountValue) {
+    ui.songCountValue.textContent = String(trackLibrary.tracks.length);
   }
 }
 
-function rememberFiles(fileList) {
-  for (const file of fileList) {
-    discoveredFiles.set(file.name.toUpperCase(), file);
+function setSelectedMdx(track, { silentStatus = false } = {}) {
+  trackLibrary.selectedTrackId = track ? track.id : null;
+  renderSongList();
+  if (track && !silentStatus) {
+    setStatus(`Selected MDX: ${formatTrackLabel(track)}`);
   }
+}
+
+function makeResourceId(collectionId, relativePath, sizeHint = 0, stamp = 0) {
+  return `${collectionId}::${normalizePath(relativePath).toUpperCase()}::${sizeHint}::${stamp}`;
+}
+
+function createResourceFromFile(file, collectionId = 'loose') {
+  const relativePath = normalizePath(file.name);
+  return {
+    id: makeResourceId(collectionId, relativePath, file.size >>> 0, file.lastModified >>> 0),
+    collectionId,
+    sourceName: '',
+    relativePath,
+    pathKey: relativePath.toUpperCase(),
+    baseName: getPathBaseName(relativePath),
+    baseKey: getPathBaseName(relativePath).toUpperCase(),
+    readBytes: async () => readFileAsUint8Array(file),
+  };
+}
+
+function readUint16LE(bytes, offset) {
+  if (offset < 0 || offset + 2 > bytes.length) {
+    throw new Error('Invalid ZIP: truncated uint16 field.');
+  }
+  return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+function readUint32LE(bytes, offset) {
+  if (offset < 0 || offset + 4 > bytes.length) {
+    throw new Error('Invalid ZIP: truncated uint32 field.');
+  }
+  return (
+    (bytes[offset]) |
+    (bytes[offset + 1] << 8) |
+    (bytes[offset + 2] << 16) |
+    (bytes[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function decodeZipPath(bytes, start, length) {
+  if (start < 0 || length < 0 || start + length > bytes.length) {
+    throw new Error('Invalid ZIP: filename field out of bounds.');
+  }
+  return normalizePath(utf8Decoder.decode(bytes.subarray(start, start + length)));
+}
+
+function findEndOfCentralDirectoryOffset(zipBytes) {
+  const minimum = Math.max(0, zipBytes.length - (0xffff + 22));
+  for (let offset = zipBytes.length - 22; offset >= minimum; offset -= 1) {
+    if (
+      zipBytes[offset] === 0x50 &&
+      zipBytes[offset + 1] === 0x4b &&
+      zipBytes[offset + 2] === 0x05 &&
+      zipBytes[offset + 3] === 0x06
+    ) {
+      return offset;
+    }
+  }
+  return -1;
+}
+
+async function inflateRawDeflate(compressedBytes) {
+  if (typeof DecompressionStream !== 'function') {
+    throw new Error('ZIP deflate extraction requires browser support for DecompressionStream.');
+  }
+  const decompressed = new Blob([compressedBytes])
+    .stream()
+    .pipeThrough(new DecompressionStream('deflate-raw'));
+  const buffer = await new Response(decompressed).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+function createResourceFromZipEntry({
+  collectionId,
+  sourceName,
+  relativePath,
+  compressionMethod,
+  compressedBytes,
+  uncompressedSize,
+}) {
+  let cachedBytesPromise = null;
+  const normalizedPath = normalizePath(relativePath);
+  const ensureBytes = async () => {
+    if (!cachedBytesPromise) {
+      cachedBytesPromise = (async () => {
+        if (compressionMethod === 0) {
+          if (uncompressedSize !== 0xffffffff && compressedBytes.length !== (uncompressedSize >>> 0)) {
+            throw new Error(`ZIP entry size mismatch for ${normalizedPath}.`);
+          }
+          return compressedBytes;
+        }
+        if (compressionMethod === 8) {
+          const inflated = await inflateRawDeflate(compressedBytes);
+          if (uncompressedSize !== 0xffffffff && inflated.length !== (uncompressedSize >>> 0)) {
+            throw new Error(`ZIP entry size mismatch for ${normalizedPath}.`);
+          }
+          return inflated;
+        }
+        throw new Error(`Unsupported ZIP compression method ${compressionMethod} for ${normalizedPath}.`);
+      })();
+    }
+    return cachedBytesPromise;
+  };
+
+  return {
+    id: makeResourceId(collectionId, normalizedPath, uncompressedSize >>> 0, compressionMethod >>> 0),
+    collectionId,
+    sourceName,
+    relativePath: normalizedPath,
+    pathKey: normalizedPath.toUpperCase(),
+    baseName: getPathBaseName(normalizedPath),
+    baseKey: getPathBaseName(normalizedPath).toUpperCase(),
+    readBytes: ensureBytes,
+  };
+}
+
+async function extractMdxPdxResourcesFromZip(file) {
+  const zipBytes = await readFileAsUint8Array(file);
+  const eocdOffset = findEndOfCentralDirectoryOffset(zipBytes);
+  if (eocdOffset < 0) {
+    throw new Error(`Invalid ZIP archive: ${file.name}`);
+  }
+
+  const totalEntries = readUint16LE(zipBytes, eocdOffset + 10);
+  const centralDirectoryOffset = readUint32LE(zipBytes, eocdOffset + 16);
+  const collectionId = `zip:${file.name}:${file.lastModified >>> 0}:${file.size >>> 0}:${zipImportSequence++}`;
+  const resources = [];
+  let cursor = centralDirectoryOffset;
+
+  for (let i = 0; i < totalEntries; i += 1) {
+    if (cursor + 46 > zipBytes.length) {
+      throw new Error(`Invalid ZIP archive: central directory entry ${i} is truncated.`);
+    }
+    const centralSig = readUint32LE(zipBytes, cursor);
+    if (centralSig !== 0x02014b50) {
+      throw new Error(`Invalid ZIP archive: bad central directory signature at entry ${i}.`);
+    }
+
+    const flags = readUint16LE(zipBytes, cursor + 8);
+    const compressionMethod = readUint16LE(zipBytes, cursor + 10);
+    const compressedSize = readUint32LE(zipBytes, cursor + 20);
+    const uncompressedSize = readUint32LE(zipBytes, cursor + 24);
+    const fileNameLength = readUint16LE(zipBytes, cursor + 28);
+    const extraLength = readUint16LE(zipBytes, cursor + 30);
+    const commentLength = readUint16LE(zipBytes, cursor + 32);
+    const localHeaderOffset = readUint32LE(zipBytes, cursor + 42);
+
+    const fileNameStart = cursor + 46;
+    const relativePath = decodeZipPath(zipBytes, fileNameStart, fileNameLength);
+
+    const nextCursor = fileNameStart + fileNameLength + extraLength + commentLength;
+    if (nextCursor > zipBytes.length) {
+      throw new Error(`Invalid ZIP archive: entry ${relativePath || i} exceeds central directory bounds.`);
+    }
+    cursor = nextCursor;
+
+    if (!relativePath || relativePath.endsWith('/')) {
+      continue;
+    }
+    if (!isMdxPath(relativePath) && !isPdxPath(relativePath)) {
+      continue;
+    }
+    if ((flags & 0x1) !== 0) {
+      throw new Error(`Encrypted ZIP entries are not supported (${relativePath}).`);
+    }
+    if (compressionMethod !== 0 && compressionMethod !== 8) {
+      throw new Error(`Unsupported ZIP compression method ${compressionMethod} for ${relativePath}.`);
+    }
+
+    if (localHeaderOffset + 30 > zipBytes.length) {
+      throw new Error(`Invalid ZIP archive: local header out of range for ${relativePath}.`);
+    }
+    const localSig = readUint32LE(zipBytes, localHeaderOffset);
+    if (localSig !== 0x04034b50) {
+      throw new Error(`Invalid ZIP archive: local header signature mismatch for ${relativePath}.`);
+    }
+    const localNameLength = readUint16LE(zipBytes, localHeaderOffset + 26);
+    const localExtraLength = readUint16LE(zipBytes, localHeaderOffset + 28);
+    const dataStart = localHeaderOffset + 30 + localNameLength + localExtraLength;
+    const dataEnd = dataStart + compressedSize;
+    if (dataEnd > zipBytes.length) {
+      throw new Error(`Invalid ZIP archive: compressed payload out of range for ${relativePath}.`);
+    }
+
+    resources.push(createResourceFromZipEntry({
+      collectionId,
+      sourceName: file.name,
+      relativePath,
+      compressionMethod,
+      compressedBytes: zipBytes.slice(dataStart, dataEnd),
+      uncompressedSize,
+    }));
+  }
+
+  return resources;
 }
 
 async function readFileAsUint8Array(file) {
@@ -301,14 +594,42 @@ async function ensureWorkletReady() {
   await readyPromise;
 }
 
-async function choosePdxBytes(mdxBytes) {
+function firstIndexedByBase(byBase, key) {
+  const list = byBase.get(key);
+  return list && list.length > 0 ? list[0] : null;
+}
+
+function findPdxResourceForTrack(track, pdxCandidateName) {
+  const trackDir = getPathDirName(track.relativePath);
+  const normalizedCandidate = normalizePath(pdxCandidateName);
+  const candidateInTrackDir = trackDir && normalizedCandidate.indexOf('/') < 0
+    ? normalizePath(`${trackDir}/${normalizedCandidate}`)
+    : normalizedCandidate;
+  const candidatePathKey = normalizedCandidate.toUpperCase();
+  const candidateTrackPathKey = candidateInTrackDir.toUpperCase();
+  const candidateBaseKey = getPathBaseName(normalizedCandidate).toUpperCase();
+
+  const collection = trackLibrary.collections.get(track.collectionId);
+  if (collection) {
+    const scopedHit =
+      collection.byPath.get(candidateTrackPathKey) ||
+      collection.byPath.get(candidatePathKey) ||
+      firstIndexedByBase(collection.byBase, candidateBaseKey);
+    if (scopedHit) return scopedHit;
+  }
+
+  return (
+    trackLibrary.globalByPath.get(candidateTrackPathKey) ||
+    trackLibrary.globalByPath.get(candidatePathKey) ||
+    firstIndexedByBase(trackLibrary.globalByBase, candidateBaseKey) ||
+    null
+  );
+}
+
+async function choosePdxBytes(mdxBytes, track) {
   const hasPdx = mdxHasPdxFileName(mdxBytes);
   if (hasPdx == null) throw new Error('MdxHasPdxFileName failed.');
   if (!hasPdx) return null;
-
-  if (selectedPdxFile) {
-    return readFileAsUint8Array(selectedPdxFile);
-  }
 
   const pdxFileName = mdxGetPdxFileName(mdxBytes);
   if (!pdxFileName) {
@@ -316,10 +637,10 @@ async function choosePdxBytes(mdxBytes) {
   }
 
   for (const candidate of buildPdxNameCandidates(pdxFileName)) {
-    const hit = discoveredFiles.get(candidate.toUpperCase());
+    const hit = findPdxResourceForTrack(track, candidate);
     if (hit) {
-      setStatus(`Using discovered PDX: ${hit.name}`);
-      return readFileAsUint8Array(hit);
+      setStatus(`Using discovered PDX: ${formatTrackLabel(hit)}`);
+      return hit.readBytes();
     }
   }
 
@@ -327,7 +648,8 @@ async function choosePdxBytes(mdxBytes) {
 }
 
 async function loadAndPlay() {
-  if (!selectedMdxFile) {
+  const selectedTrack = getSelectedTrack();
+  if (!selectedTrack) {
     throw new Error('Select an MDX file first.');
   }
 
@@ -335,12 +657,12 @@ async function loadAndPlay() {
   await ensureWorkletReady();
   await audioContext.resume();
 
-  const mdxFileImage = await readFileAsUint8Array(selectedMdxFile);
+  const mdxFileImage = await selectedTrack.readBytes();
   const title = mdxGetTitle(mdxFileImage);
   if (!title) throw new Error('MdxGetTitle failed.');
   ui.titleValue.textContent = title;
 
-  const pdxFileImage = await choosePdxBytes(mdxFileImage);
+  const pdxFileImage = await choosePdxBytes(mdxFileImage, selectedTrack);
   const required = mdxGetRequiredBufferSize(
     mdxFileImage,
     pdxFileImage ? pdxFileImage.length : 0
@@ -370,7 +692,7 @@ async function loadAndPlay() {
   ui.elapsedValue.textContent = '0.0s';
   ui.loopsValue.textContent = '0';
   ui.durationValue.textContent = '-';
-  setStatus(`Loading ${selectedMdxFile.name} ...`);
+  setStatus(`Loading ${formatTrackLabel(selectedTrack)} ...`);
 }
 
 async function sendTransportCommand(type) {
@@ -395,33 +717,72 @@ function onDropZoneLeave(event) {
 async function handleIncomingFiles(fileList) {
   const files = Array.from(fileList || []);
   if (files.length === 0) return;
-  rememberFiles(files);
+  const resources = [];
+  const importStats = {
+    droppedItems: files.length,
+    directMdx: 0,
+    directPdx: 0,
+    zipFiles: 0,
+    zipEntries: 0,
+    ignored: 0,
+  };
 
-  const droppedMdx = files.find((file) => file.name.toUpperCase().endsWith('.MDX')) || null;
-  const droppedPdx = files.find((file) => file.name.toUpperCase().endsWith('.PDX')) || null;
+  for (const file of files) {
+    if (isZipPath(file.name)) {
+      importStats.zipFiles += 1;
+      const zipResources = await extractMdxPdxResourcesFromZip(file);
+      importStats.zipEntries += zipResources.length;
+      resources.push(...zipResources);
+      continue;
+    }
+    if (isMdxPath(file.name) || isPdxPath(file.name)) {
+      const resource = createResourceFromFile(file);
+      resources.push(resource);
+      if (isMdxPath(file.name)) {
+        importStats.directMdx += 1;
+      } else {
+        importStats.directPdx += 1;
+      }
+      continue;
+    }
+    importStats.ignored += 1;
+  }
 
-  if (droppedMdx) {
-    setSelectedMdx(droppedMdx);
-    // Avoid stale manual PDX from a previous track; autodiscovery still works via discoveredFiles.
-    if (!droppedPdx) {
-      setSelectedPdx(null);
+  if (resources.length === 0) {
+    setStatus(`Scanned ${importStats.droppedItems} item(s), but no MDX/PDX files were found.`, true);
+    return;
+  }
+
+  const newTracks = [];
+  for (const resource of resources) {
+    const addedTrack = registerResource(resource);
+    if (addedTrack) {
+      newTracks.push(addedTrack);
     }
   }
-  if (droppedPdx) {
-    setSelectedPdx(droppedPdx);
+
+  if (newTracks.length > 0) {
+    setSelectedMdx(newTracks[0], { silentStatus: true });
+  } else if (!getSelectedTrack() && trackLibrary.tracks.length > 0) {
+    setSelectedMdx(trackLibrary.tracks[0], { silentStatus: true });
+  } else {
+    renderSongList();
   }
 
-  if (!droppedMdx && !droppedPdx) {
-    setStatus(`Discovered ${files.length} dropped file(s), but none were MDX/PDX.`, true);
+  const selectedTrack = getSelectedTrack();
+  if (!selectedTrack) {
+    setStatus('Imported files, but no MDX song is available to play.', true);
     return;
   }
 
-  if (!droppedMdx) {
-    setStatus(`Discovered ${files.length} dropped file(s).`);
-    return;
-  }
-
-  setStatus(`Selected ${droppedMdx.name}. Click "Load & Play" to start playback.`);
+  const importedCount = resources.length;
+  const songCount = trackLibrary.tracks.length;
+  const sourceSummary = importStats.zipFiles > 0
+    ? `${importStats.directMdx + importStats.directPdx} direct + ${importStats.zipEntries} from ZIP`
+    : `${importedCount} direct`;
+  setStatus(
+    `Imported ${importedCount} MDX/PDX (${sourceSummary}). ${songCount} song(s) available. Selected: ${formatTrackLabel(selectedTrack)}.`
+  );
 }
 
 async function onDropZoneDrop(event) {
@@ -632,13 +993,30 @@ function bindEvents() {
     }
   });
 
+  if (ui.songList) {
+    ui.songList.addEventListener('change', () => {
+      const nextTrack = trackLibrary.tracks.find((track) => track.id === ui.songList.value) || null;
+      if (nextTrack) {
+        setSelectedMdx(nextTrack);
+      }
+    });
+  }
+
   window.addEventListener('keydown', async (event) => {
-    if (event.target instanceof HTMLInputElement) return;
+    if (
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement ||
+      event.target instanceof HTMLSelectElement ||
+      event.target instanceof HTMLButtonElement ||
+      (event.target instanceof HTMLElement && event.target.isContentEditable)
+    ) {
+      return;
+    }
     try {
       if (event.code === 'Space') {
         event.preventDefault();
         if (!playbackState.running) {
-          if (selectedMdxFile) {
+          if (getSelectedTrack()) {
             await loadAndPlay();
           }
         } else if (playbackState.paused) {
@@ -660,4 +1038,5 @@ function bindEvents() {
 }
 
 bindEvents();
+renderSongList();
 renderVisualizer();

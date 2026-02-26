@@ -256,6 +256,51 @@ h1 {
   border: 0;
 }
 
+.song-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.song-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.song-count {
+  color: var(--accent-2);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.song-list {
+  width: 100%;
+  min-height: 120px;
+  border: 1px solid var(--btn-border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-main);
+  padding: 6px;
+  font-size: 0.85rem;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.song-list:disabled {
+  opacity: 0.5;
+}
+
+.song-list option {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.song-list:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
 .buttons {
   display: flex;
   gap: 10px;
