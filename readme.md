@@ -2,6 +2,9 @@
 
 	AI-assisted JavaScript/Web conversion by AnimaInCorpore.
 
+**Web demo:** [https://mdx.anides.de/](https://mdx.anides.de/) - try the decoder in your browser!
+
+
 	X68k MXDRV music driver version 2.06+17 Rel.X5-S
 		(c)1988-92 milk.,K.MAEKAWA, Missy.M, Yatsube
 
@@ -16,7 +19,10 @@
 
 # スクリーンショット
 example の simple_player 実行中のスクリーンショット。
-![screen_shot](https://user-images.githubusercontent.com/11882108/69473608-bb61fb80-0df9-11ea-9edc-81b37ccd7cac.png)
+![binary screenshot](https://user-images.githubusercontent.com/11882108/69473608-bb61fb80-0df9-11ea-9edc-81b37ccd7cac.png)
+
+Web デモ用スクリーンショット:
+![web screenshot](https://raw.githubusercontent.com/AnimaInCorpore/portable_mdx/master/web/screenshot.png)
 
 # 解説
 
