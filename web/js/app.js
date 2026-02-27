@@ -48,6 +48,7 @@ const trackLibrary = {
 
 const utf8Decoder = new TextDecoder('utf-8');
 let zipImportSequence = 0;
+const FILE_PICKER_ACCEPT = '.mdx,.MDX,.pdx,.PDX,.zip,.ZIP';
 
 const vizState = {
   opmRegs: new Uint8Array(256),
@@ -145,6 +146,18 @@ function isPdxPath(path) {
 
 function isZipPath(path) {
   return normalizePath(path).toUpperCase().endsWith('.ZIP');
+}
+
+function isIOSLikeDevice() {
+  const ua = navigator.userAgent || '';
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1;
+}
+
+function configureFilePickerAccept() {
+  // iOS Safari can hide unknown custom extensions when accept only lists them.
+  // Allow all picks on iOS; unsupported files are still ignored in handleIncomingFiles().
+  ui.filePicker.accept = isIOSLikeDevice() ? '' : FILE_PICKER_ACCEPT;
 }
 
 function formatTrackLabel(track) {
@@ -1037,6 +1050,7 @@ function bindEvents() {
   });
 }
 
+configureFilePickerAccept();
 bindEvents();
 renderSongList();
 renderVisualizer();
